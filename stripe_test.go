@@ -2588,6 +2588,30 @@ func TestRawRequestStandardPost(t *testing.T) {
 	defer testServer.Close()
 }
 
+func TestRawRequestStandardPostNilParamsSetsIdempotencyKey(t *testing.T) {
+	var idempotencyKey string
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		idempotencyKey = r.Header.Get("Idempotency-Key")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`{"object": "abc"}`))
+		assert.NoError(t, err)
+	}))
+	defer testServer.Close()
+
+	backend := GetBackendWithConfig(
+		APIBackend,
+		&BackendConfig{
+			LeveledLogger:     debugLeveledLogger,
+			MaxNetworkRetries: Int64(0),
+			URL:               String(testServer.URL),
+		},
+	).(*BackendImplementation)
+
+	_, err := backend.RawRequest(http.MethodPost, "/v1/abc", "sk_test_xyz", `foo=myFoo`, nil)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, idempotencyKey)
+}
+
 func TestRawRequestPreviewGet(t *testing.T) {
 	var body string
 	var path string

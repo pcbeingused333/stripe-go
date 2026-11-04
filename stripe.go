@@ -884,6 +884,10 @@ func (s *BackendImplementation) NewRequest(method, path, key, contentType string
 		req.Header.Set("Stripe-Context", *s.StripeContext)
 	}
 
+	if params == nil && isHTTPWriteMethod(method) {
+		req.Header.Add("Idempotency-Key", NewIdempotencyKey())
+	}
+
 	if params != nil {
 		if params.Context != nil {
 			req = req.WithContext(params.Context)
