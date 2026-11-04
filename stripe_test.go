@@ -2266,6 +2266,37 @@ func TestStripeClientUserAgentOmitsPlatformWithoutTelemetry(t *testing.T) {
 	assert.Empty(t, userAgent["platform"])
 }
 
+func TestStripeClientUserAgentHonorsPerCallTelemetrySetting(t *testing.T) {
+	originalEncoded := encodedStripeUserAgent
+	originalReady := encodedStripeUserAgentReady
+	originalTelemetry := encodedStripeUserAgentTelemetry
+	defer func() {
+		encodedStripeUserAgent = originalEncoded
+		encodedStripeUserAgentReady = originalReady
+		encodedStripeUserAgentTelemetry = originalTelemetry
+		resetTelemetryID()
+	}()
+
+	resetTelemetryID()
+	configDirOverride = t.TempDir()
+
+	// Whichever setting populates the shared cache first must not decide the
+	// result for a backend configured with the other setting.
+	for _, firstCall := range []bool{true, false} {
+		encodedStripeUserAgentReady = &sync.Once{}
+		getEncodedStripeUserAgent(firstCall)
+
+		var enabled, disabled map[string]interface{}
+		assert.NoError(t, json.Unmarshal([]byte(getEncodedStripeUserAgent(true)), &enabled))
+		assert.NoError(t, json.Unmarshal([]byte(getEncodedStripeUserAgent(false)), &disabled))
+
+		assert.NotEmpty(t, enabled["platform"], "first call %v", firstCall)
+		assert.NotEmpty(t, enabled["telemetry_id"], "first call %v", firstCall)
+		assert.Empty(t, disabled["platform"], "first call %v", firstCall)
+		assert.Empty(t, disabled["telemetry_id"], "first call %v", firstCall)
+	}
+}
+
 func TestStripeClientUserAgentContainsTelemetryID(t *testing.T) {
 	originalEncoded := encodedStripeUserAgent
 	originalReady := encodedStripeUserAgentReady

@@ -2142,6 +2142,7 @@ var appInfo *AppInfo
 var backends Backends
 var encodedStripeUserAgent string
 var encodedStripeUserAgentReady *sync.Once
+var encodedStripeUserAgentTelemetry bool
 var encodedUserAgent string
 
 // The default HTTP client used for communication with any of Stripe's
@@ -2214,28 +2215,39 @@ func initUserAgent() {
 
 func getEncodedStripeUserAgent(enableTelemetry bool) string {
 	encodedStripeUserAgentReady.Do(func() {
-		stripeUserAgent := &stripeClientUserAgent{
-			Application:     appInfo,
-			BindingsVersion: clientversion,
-			Language:        "go",
-			LanguageVersion: runtime.Version(),
-		}
-		if enableTelemetry {
-			stripeUserAgent.Platform = runtime.GOOS + " " + runtime.GOARCH
-			stripeUserAgent.TelemetryID = getTelemetryID()
-		}
-		if agent, ok := detectAIAgent(os.LookupEnv); ok {
-			stripeUserAgent.AIAgent = agent
-		}
-		marshaled, err := json.Marshal(stripeUserAgent)
-		// Encoding this struct should never be a problem, so we're okay to panic
-		// in case it is for some reason.
-		if err != nil {
-			panic(err)
-		}
-		encodedStripeUserAgent = string(marshaled)
+		encodedStripeUserAgent = buildEncodedStripeUserAgent(enableTelemetry)
+		encodedStripeUserAgentTelemetry = enableTelemetry
 	})
+	// The cache is shared by every backend, but EnableTelemetry can be set per
+	// backend. If this backend asks for a different setting than the one that
+	// was cached, build its own value instead of leaking the cached one.
+	if enableTelemetry != encodedStripeUserAgentTelemetry {
+		return buildEncodedStripeUserAgent(enableTelemetry)
+	}
 	return encodedStripeUserAgent
+}
+
+func buildEncodedStripeUserAgent(enableTelemetry bool) string {
+	stripeUserAgent := &stripeClientUserAgent{
+		Application:     appInfo,
+		BindingsVersion: clientversion,
+		Language:        "go",
+		LanguageVersion: runtime.Version(),
+	}
+	if enableTelemetry {
+		stripeUserAgent.Platform = runtime.GOOS + " " + runtime.GOARCH
+		stripeUserAgent.TelemetryID = getTelemetryID()
+	}
+	if agent, ok := detectAIAgent(os.LookupEnv); ok {
+		stripeUserAgent.AIAgent = agent
+	}
+	marshaled, err := json.Marshal(stripeUserAgent)
+	// Encoding this struct should never be a problem, so we're okay to panic
+	// in case it is for some reason.
+	if err != nil {
+		panic(err)
+	}
+	return string(marshaled)
 }
 
 func isHTTPWriteMethod(method string) bool {
